@@ -1,0 +1,21 @@
+**free
+
+dcl-ds procedure_t qualified template inz;
+    name  varchar(256);
+    addr  pointer(*proc);
+end-ds;
+
+dcl-ds testSuiteInfo_t qualified template;
+    procedureCount  uns(5);
+    procedures      likeds(procedure_t) dim(*auto : 32000);
+end-ds;
+
+
+// =============================================================================
+// Returns the service program (test suite) information.
+// =============================================================================
+dcl-pr GetTestSuiteInfo  likeds(testSuiteInfo_t);
+    srvpgmName char(10) const;
+    library    char(10) const;
+end-pr;
+
