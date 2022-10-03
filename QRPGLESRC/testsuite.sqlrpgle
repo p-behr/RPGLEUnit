@@ -20,63 +20,76 @@ end-ds;
 dcl-proc  GetTestSuiteInfo  export;
     dcl-pi *n likeds(testSuiteInfo_t);
         testSuite  char(10) const;
-        library    char(10) const;
+        in_library    char(10) const options(*nopass : *omit);
     end-pi;
 
-    dcl-s  procedureList  char(10)  dim(2000);
-    dcl-s  procedureCount  uns(5);
+    dcl-s  library  char(10) inz('*LIBL');
+    dcl-s  procList  char(10)  dim(*auto : 32000);
     dcl-s  pgmMark  int(10);
     dcl-s  i  uns(5);
-    dcl-s  name  char(10);
-    dcl-s  ptr   pointer(*proc);
-    dcl-s  testSuite  likeds(testSuiteInfo_t) inz;
+    dcl-s  x  uns(5);
+    dcl-ds testSuiteInfo  likeds(testSuiteInfo_t) inz;
 
-    GetProcedureList(procedureList : procedureCount);
-    pgmMark = ActivateSrvPgm(srvpgmName:library);
-    for i = 1 to procedureCount;
-        name = procedureList(i);
-        ptr = GetProcedurePointer(pgmMark : name);
-        testSuite.procedureCount = procedureCount;
-        testSuite.procedures(i).name = name;
-        testSuite.procedures(i).addr = ptr;
+    if %parms >= %parmnum(in_library)
+    and %addr(in_library) <> *null
+    and in_library <> *blanks;
+        library = in_library;
+    endif;
+
+    // Get list of all exported procedures
+    exsr GetProcedureList;
+
+    // Activate the test suite (service program)
+    pgmMark = ActivateSrvPgm(testSuite : library);
+
+    // Spin through all the procedures, get a pointer
+    // to each of them, and load testSuiteInfo
+    for i = 1 to %elem(procList);
+        select;
+            when procInfo.name = 'SETUPSUITE';
+                testSuiteInfo.setupSuite = GetProcedurePointer(pgmMark : procList(i));
+            when procInfo.name = 'SETUP';
+                testSuiteInfo.setup = GetProcedurePointer(pgmMark : procList(i));
+            when procInfo.name = 'TEARDOWN';
+                testSuiteInfo.teardown = GetProcedurePointer(pgmMark : procList(i));
+            when procInfo.name = 'TEARDOWNSUITE';
+                testSuiteInfo.teardownSuite = GetProcedurePointer(pgmMark : procList(i));
+            when %subst(procInfo.name : 1 : 4) = 'TEST';
+                testSuiteInfo.testCount += 1;
+                x = testSuiteInfo.testCount;
+                testCases(x).name = procList(i);
+                testCases(x).addr = GetProcedurePointer(pgmMark : procList(i));
+        endsl;
     endfor;
     
     return  testSuiteInfo;
+
+    // ------------------------------------------------------------
+    begsr GetProcedureList;
+
+        Exec SQL
+        DECLARE procedure_list_cursor CURSOR FOR
+        SELECT symbol_name
+        FROM qsys2.program_export_import_info
+        WHERE program_library = :library
+        AND program_name = :testSuite
+        AND symbol_usage = '*PROCEXP';
+
+        Exec SQL
+        OPEN procedure_list_cursor;
+
+        Exec SQL
+        FETCH procedure_list_cursor
+        FOR 32000 ROWS
+        INTO :procList;
+
+        Exec SQL
+        CLOSE procedure_list_cursor;
+     
+    endsr;
+
 end-proc  GetTestSuiteInfo;
 
-
-
-//==============================================================================
-// Get a list of all procedures exported by the service program
-//==============================================================================
-dcl-proc  GetProcedureList;
-    dcl-pi  *n;
-        procedureNames  char(10) dim(2000);
-        procedureCount  uns(5);
-    end-pi;
-
-    dcl-s  procedures  char(10) dim(*auto : 2000);
-
-    Exec SQL
-      DECLARE proceudre_list_cursor CURSOR FOR
-         SELECT symbol_name
-         FROM qsys2.program_export_import_info
-         WHERE program_library = :library
-           AND program_name = :srvpgmName
-           AND symbol_usage = '*PROCEXP';
-
-    Exec SQL
-      OPEN proceudre_list_cursor;
-
-    Exec SQL
-      FETCH proceudre_list_cursor
-      INTO :procedures;
-
-    Exec SQL
-      CLOSE proceudre_list_cursor;
-
-    return procedures;
-end-proc  GetProcedureList;
 
 
 //==============================================================================
@@ -118,7 +131,7 @@ dcl-proc  ActivateSrvPgm;
 
     // Convert the symbolic object type "*SRVPGM" to the system hex object type.
     // I can't imagine this would ever change (so it could probably be a constant)
-    // but we'll fetch it dynamically anyway because I'm not sure, and APIs are fun.
+    // but we'll fetch it dynamically anyway.
     ConvertTypeAPI('*SYMTOHEX' : '*SRVPGM' : objectType : errorDs);
 
     // Get a system pointer to the service program object
@@ -158,12 +171,12 @@ dcl-proc  GetProcedurePointer;
 
     // Get export.
     GetExport( actMark :
-                0 :
-                %len(proc.procNm) :
-                proc.procNm :
-                proc.procPtr :
-                exportType :
-                percolateErrors );
+               0 :
+               %len(proc.procNm) :
+               proc.procNm :
+               proc.procPtr :
+               exportType :
+               percolateErrors );
 
     return addr;
 end-proc  GetProcedurePointer;

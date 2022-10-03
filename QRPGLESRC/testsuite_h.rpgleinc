@@ -6,8 +6,12 @@ dcl-ds procedure_t qualified template inz;
 end-ds;
 
 dcl-ds testSuiteInfo_t qualified template;
-    procedureCount  uns(5);
-    procedures      likeds(procedure_t) dim(*auto : 32000);
+    setupSuite pointer(*proc) inz(*null);
+    setup      pointer(*proc) inz(*null);
+    teardown   pointer(*proc) inz(*null);
+    teardownSuite pointer(*proc) inz(*null);
+    testCount  uns(5);
+    testCases  likeds(procedure_t) dim(*auto : 32000);
 end-ds;
 
 
@@ -15,7 +19,7 @@ end-ds;
 // Returns the service program (test suite) information.
 // =============================================================================
 dcl-pr GetTestSuiteInfo  likeds(testSuiteInfo_t);
-    srvpgmName char(10) const;
-    library    char(10) const;
+    testSuite  char(10) const;
+    library    char(10) const options(*nopass : *omit);
 end-pr;
 
